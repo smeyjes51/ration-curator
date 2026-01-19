@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ration Curator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <style>
+        .platform-tiktok { background-color: #000; }
+        .platform-instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
+        .platform-youtube { background-color: #FF0000; }
+        .tag-input:focus { outline: none; }
+        .video-card { transition: all 0.2s ease; }
+        .video-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Configuration Modal -->
+    <div id="configModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+            <h2 class="text-2xl font-bold mb-4">🔧 Configure Supabase</h2>
+            <p class="text-gray-600 mb-4">Enter your Supabase credentials to get started.</p>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Supabase URL</label>
+                    <input type="text" id="configUrl" placeholder="https://xxxxx.supabase.co" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Anon Key</label>
+                    <input type="password" id="configKey" placeholder="eyJhbGciOiJIUzI1NiIs..." 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                </div>
+                <button onclick="saveConfig()" 
+                        class="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 font-medium">
+                    Save & Connect
+                </button>
+            </div>
+            
+            <p class="text-xs text-gray-500 mt-4">
+                Credentials are stored locally in your browser. Never shared.
+            </p>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="hidden">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <span class="text-2xl">🥗</span>
+                    <h1 class="text-xl font-bold text-gray-900">Ration Curator</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span id="connectionStatus" class="text-sm text-green-600">● Connected</span>
+                    <button onclick="showConfig()" class="text-gray-500 hover:text-gray-700">
+                        ⚙️ Settings
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tabs -->
+        <div class="bg-white border-b">
+            <div class="max-w-7xl mx-auto px-4">
+                <nav class="flex space-x-8">
+                    <button onclick="showTab('curate')" id="tab-curate" 
+                            class="tab-btn py-4 px-1 border-b-2 border-green-500 text-green-600 font-medium">
+                        📥 Curate
+                    </button>
+                    <button onclick="showTab('discover')" id="tab-discover"
+                            class="tab-btn py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                        🔍 Discover
+                    </button>
+                    <button onclick="showTab('library')" id="tab-library"
+                            class="tab-btn py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                        📚 Library
+                    </button>
+                    <button onclick="showTab('submissions')" id="tab-submissions"
+                            class="tab-btn py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                        📬 Submissions
+                    </button>
+                </nav>
+            </div>
+        </div>
+
+        <!-- Tab Content -->
+        <main class="max-w-7xl mx-auto px-4 py-6">
+            
+            <!-- CURATE TAB -->
+            <div id="content-curate" class="tab-content">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Input Panel -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h2 class="text-lg font-semibold mb-4">Paste URLs</h2>
+                        <textarea id="urlInput" rows="10" 
+                                  placeholder="Paste URLs here (one per line)&#10;&#10;Examples:&#10;https://vm.tiktok.com/ZMhXYZ123/&#10;https://www.instagram.com/reel/ABC123/&#10;https://youtu.be/dQw4w9WgXcQ"
+                                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 font-mono text-sm"></textarea>
+                        
+                        <div class="mt-4 flex items-center space-x-4">
+                            <button onclick="fetchMetadata()" id="fetchBtn"
+                                    class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium flex items-center">
+                                <span id="fetchBtnText">Fetch Metadata</span>
+                                <span id="fetchSpinner" class="hidden ml-2">⏳</span>
+                            </button>
+                            <button onclick="clearInput()" class="text-gray-500 hover:text-gray-700">
+                                Clear
+                            </button>
+                        </div>
+                        
+                        <div id="fetchError" class="hidden mt-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm"></div>
+                    </div>
+
+                    <!-- Results Panel -->
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-lg font-semibold">Results</h2>
+                            <span id="resultCount" class="text-sm text-gray-500"></span>
+                        </div>
+                        
+                        <div id="results" class="space-y-4 max-h-[600px] overflow-y-auto">
+                            <p class="text-gray-500 text-center py-8">
+                                Paste URLs and click "Fetch Metadata" to see results here
+                            </p>
+                        </div>
+                        
+                        <div id="saveAllContainer" class="hidden mt-4 pt-4 border-t">
+                            <div class="flex items-center space-x-4">
+                                <select id="bulkCategory" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg">
+                                    <option value="">Select category for all...</option>
+                                </select>
+                                <button onclick="saveAll()" 
+                                        class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 font-medium">
+                                    Save All to Database
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DISCOVER TAB -->
+            <div id="content-discover" class="tab-content hidden">
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <h2 class="text-lg font-semibold mb-4">🔍 Discover Content by Topic</h2>
+                    <p class="text-gray-600 mb-4">
+                        Search for content in topics you don't personally follow. 
+                        This helps you curate content outside your filter bubble.
+                    </p>
+                    
+                    <div class="flex flex-wrap gap-4">
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Topic</label>
+                            <input type="text" id="discoverTopic" placeholder="e.g., chess, classical music, marine biology"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                        </div>
+                        <div class="w-40">
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Platform</label>
+                            <select id="discoverPlatform" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                                <option value="all">All Platforms</option>
+                                <option value="tiktok">TikTok</option>
+                                <option value="instagram">Instagram</option>
+                                <option value="youtube">YouTube</option>
+                            </select>
+                        </div>
+                        <div class="flex items-end">
+                            <button onclick="discoverContent()" 
+                                    class="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 font-medium">
+                                Search
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Discovery Methods -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="font-semibold mb-2">🎯 Reddit Discovery</h3>
+                        <p class="text-gray-600 text-sm mb-4">
+                            Search Reddit for "best [topic] TikTok/YouTube accounts"
+                        </p>
+                        <button onclick="openRedditSearch()" 
+                                class="text-purple-600 hover:text-purple-700 text-sm font-medium">
+                            Open Reddit Search →
+                        </button>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="font-semibold mb-2">📋 Import from List</h3>
+                        <p class="text-gray-600 text-sm mb-4">
+                            Paste a list of usernames/handles to bulk import
+                        </p>
+                        <button onclick="showImportModal()" 
+                                class="text-purple-600 hover:text-purple-700 text-sm font-medium">
+                            Import Handles →
+                        </button>
+                    </div>
+                    
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <h3 class="font-semibold mb-2">🌐 Platform Search</h3>
+                        <p class="text-gray-600 text-sm mb-4">
+                            Direct links to search each platform
+                        </p>
+                        <div class="flex space-x-2">
+                            <a href="#" onclick="openPlatformSearch('tiktok')" class="text-black hover:underline text-sm">TikTok</a>
+                            <a href="#" onclick="openPlatformSearch('instagram')" class="text-pink-600 hover:underline text-sm">Instagram</a>
+                            <a href="#" onclick="openPlatformSearch('youtube')" class="text-red-600 hover:underline text-sm">YouTube</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Discovery Results -->
+                <div id="discoveryResults" class="bg-white rounded-lg shadow p-6">
+                    <h3 class="font-semibold mb-4">Discovery Results</h3>
+                    <p class="text-gray-500 text-center py-8">
+                        Enter a topic above to discover relevant creators
+                    </p>
+                </div>
+            </div>
+
+            <!-- LIBRARY TAB -->
+            <div id="content-library" class="tab-content hidden">
+                <div class="bg-white rounded-lg shadow p-6 mb-6">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="flex-1 min-w-[200px]">
+                            <input type="text" id="librarySearch" placeholder="Search videos..."
+                                   oninput="filterLibrary()"
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                        </div>
+                        <div>
+                            <select id="libraryPlatform" onchange="filterLibrary()" 
+                                    class="px-3 py-2 border border-gray-300 rounded-lg">
+                                <option value="">All Platforms</option>
+                                <option value="tiktok">TikTok</option>
+                                <option value="instagram">Instagram</option>
+                                <option value="youtube">YouTube</option>
+                            </select>
+                        </div>
+                        <div>
+                            <select id="libraryCategory" onchange="filterLibrary()"
+                                    class="px-3 py-2 border border-gray-300 rounded-lg">
+                                <option value="">All Categories</option>
+                            </select>
+                        </div>
+                        <div>
+                            <button onclick="loadLibrary()" class="text-green-600 hover:text-green-700">
+                                🔄 Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="libraryStats" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <!-- Stats cards populated by JS -->
+                </div>
+
+                <div id="libraryGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <p class="text-gray-500 text-center py-8 col-span-full">
+                        Loading library...
+                    </p>
+                </div>
+            </div>
+
+            <!-- SUBMISSIONS TAB -->
+            <div id="content-submissions" class="tab-content hidden">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold mb-4">📬 Community Submissions</h2>
+                    <p class="text-gray-600 mb-4">
+                        Review content submitted by users. Approve to add to your library.
+                    </p>
+                    
+                    <div id="submissionsList" class="space-y-4">
+                        <p class="text-gray-500 text-center py-8">
+                            No pending submissions
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 max-w-lg w-full mx-4">
+            <h2 class="text-xl font-bold mb-4">Import Creator Handles</h2>
+            <p class="text-gray-600 mb-4 text-sm">
+                Paste a list of usernames (one per line). We'll convert them to profile URLs.
+            </p>
+            
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Platform</label>
+                <select id="importPlatform" class="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="tiktok">TikTok</option>
+                    <option value="instagram">Instagram</option>
+                    <option value="youtube">YouTube</option>
+                </select>
+            </div>
+            
+            <textarea id="importHandles" rows="8" 
+                      placeholder="@gothamchess&#10;@hikaru&#10;@chessbrah&#10;@anna_cramling"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm mb-4"></textarea>
+            
+            <div class="flex justify-end space-x-3">
+                <button onclick="closeImportModal()" class="px-4 py-2 text-gray-600 hover:text-gray-800">
+                    Cancel
+                </button>
+                <button onclick="importHandles()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
+                    Convert to URLs
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // CONFIGURATION
+        // ============================================
+        
+        let supabaseClient = null;
+        let categories = [];
+        let currentResults = [];
+        let libraryData = [];
+
+        function loadConfig() {
+            const url = localStorage.getItem('ration_supabase_url');
+            const key = localStorage.getItem('ration_supabase_key');
+            
+            if (url && key) {
+                initSupabase(url, key);
+                document.getElementById('configModal').classList.add('hidden');
+                document.getElementById('app').classList.remove('hidden');
+                loadCategories();
+                loadLibrary();
+            }
+        }
+
+        function saveConfig() {
+            const url = document.getElementById('configUrl').value.trim();
+            const key = document.getElementById('configKey').value.trim();
+            
+            if (!url || !key) {
+                alert('Please enter both URL and Key');
+                return;
+            }
+            
+            localStorage.setItem('ration_supabase_url', url);
+            localStorage.setItem('ration_supabase_key', key);
+            
+            initSupabase(url, key);
+            document.getElementById('configModal').classList.add('hidden');
+            document.getElementById('app').classList.remove('hidden');
+            loadCategories();
+            loadLibrary();
+        }
+
+        function showConfig() {
+            document.getElementById('configUrl').value = localStorage.getItem('ration_supabase_url') || '';
+            document.getElementById('configKey').value = localStorage.getItem('ration_supabase_key') || '';
+            document.getElementById('configModal').classList.remove('hidden');
+        }
+
+        function initSupabase(url, key) {
+            supabaseClient = window.supabase.createClient(url, key);
+        }
+
+        // ============================================
+        // TABS
+        // ============================================
+
+        function showTab(tabName) {
+            // Hide all content
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            // Deactivate all tabs
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-green-500', 'text-green-600');
+                el.classList.add('border-transparent', 'text-gray-500');
+            });
+            
+            // Show selected content
+            document.getElementById(`content-${tabName}`).classList.remove('hidden');
+            // Activate selected tab
+            const tab = document.getElementById(`tab-${tabName}`);
+            tab.classList.add('border-green-500', 'text-green-600');
+            tab.classList.remove('border-transparent', 'text-gray-500');
+            
+            // Load data if needed
+            if (tabName === 'library') loadLibrary();
+            if (tabName === 'submissions') loadSubmissions();
+        }
+
+        // ============================================
+        // CATEGORIES
+        // ============================================
+
+        async function loadCategories() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('categories')
+                    .select('*')
+                    .order('sort_order');
+                
+                if (error) throw error;
+                
+                categories = data || [];
+                populateCategoryDropdowns();
+            } catch (err) {
+                console.error('Failed to load categories:', err);
+                // Use defaults
+                categories = [
+                    { name: 'Educational', slug: 'educational' },
+                    { name: 'Creative Arts', slug: 'creative-arts' },
+                    { name: 'Wellness', slug: 'wellness' },
+                    { name: 'Skills & Hobbies', slug: 'skills-hobbies' },
+                    { name: 'Science & Tech', slug: 'science-tech' },
+                    { name: 'Nature & Animals', slug: 'nature-animals' },
+                    { name: 'Comedy', slug: 'comedy' },
+                    { name: 'Inspiration', slug: 'inspiration' }
+                ];
+                populateCategoryDropdowns();
+            }
+        }
+
+        function populateCategoryDropdowns() {
+            const dropdowns = ['bulkCategory', 'libraryCategory'];
+            dropdowns.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                
+                const firstOption = el.options[0];
+                el.innerHTML = '';
+                el.appendChild(firstOption);
+                
+                categories.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat.name;
+                    option.textContent = cat.name;
+                    el.appendChild(option);
+                });
+            });
+        }
+
+        // ============================================
+        // METADATA EXTRACTION
+        // ============================================
+
+        async function fetchMetadata() {
+            const input = document.getElementById('urlInput').value.trim();
+            if (!input) return;
+            
+            const urls = input.split('\n').map(u => u.trim()).filter(u => u);
+            if (urls.length === 0) return;
+            
+            // Show loading state
+            document.getElementById('fetchBtn').disabled = true;
+            document.getElementById('fetchBtnText').textContent = 'Fetching...';
+            document.getElementById('fetchSpinner').classList.remove('hidden');
+            document.getElementById('fetchError').classList.add('hidden');
+            
+            try {
+                const supabaseUrl = localStorage.getItem('ration_supabase_url');
+                const supabaseKey = localStorage.getItem('ration_supabase_key');
+                
+                const response = await fetch(`${supabaseUrl}/functions/v1/extract-metadata`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${supabaseKey}`
+                    },
+                    body: JSON.stringify({ urls })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const data = await response.json();
+                currentResults = data.results || [data];
+                renderResults();
+                
+            } catch (err) {
+                console.error('Fetch error:', err);
+                document.getElementById('fetchError').textContent = `Error: ${err.message}`;
+                document.getElementById('fetchError').classList.remove('hidden');
+            } finally {
+                document.getElementById('fetchBtn').disabled = false;
+                document.getElementById('fetchBtnText').textContent = 'Fetch Metadata';
+                document.getElementById('fetchSpinner').classList.add('hidden');
+            }
+        }
+
+        function renderResults() {
+            const container = document.getElementById('results');
+            const countEl = document.getElementById('resultCount');
+            
+            if (currentResults.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-8">No results</p>';
+                countEl.textContent = '';
+                document.getElementById('saveAllContainer').classList.add('hidden');
+                return;
+            }
+            
+            const successful = currentResults.filter(r => r.success).length;
+            countEl.textContent = `${successful}/${currentResults.length} successful`;
+            
+            container.innerHTML = currentResults.map((result, index) => `
+                <div class="video-card border rounded-lg p-4 ${result.success ? 'bg-white' : 'bg-red-50'}">
+                    <div class="flex items-start space-x-3">
+                        ${result.thumbnail ? `
+                            <img src="${result.thumbnail}" alt="" class="w-20 h-20 object-cover rounded">
+                        ` : `
+                            <div class="w-20 h-20 bg-gray-200 rounded flex items-center justify-center text-2xl">
+                                ${getPlatformEmoji(result.platform)}
+                            </div>
+                        `}
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center space-x-2 mb-1">
+                                <span class="px-2 py-0.5 text-xs font-medium text-white rounded platform-${result.platform}">
+                                    ${result.platform}
+                                </span>
+                                ${result.success ? 
+                                    '<span class="text-green-600 text-xs">✓</span>' : 
+                                    '<span class="text-red-600 text-xs">✗ ' + (result.error || 'Failed') + '</span>'
+                                }
+                            </div>
+                            <p class="font-medium text-gray-900 truncate">${result.creator || 'Unknown creator'}</p>
+                            <p class="text-sm text-gray-600 truncate">${result.title || 'No title'}</p>
+                            
+                            ${result.success ? `
+                                <div class="mt-2">
+                                    <select onchange="updateResultCategory(${index}, this.value)" 
+                                            class="text-sm px-2 py-1 border border-gray-300 rounded">
+                                        <option value="">Select category...</option>
+                                        ${categories.map(c => `<option value="${c.name}">${c.name}</option>`).join('')}
+                                    </select>
+                                    <input type="text" placeholder="Tags (comma separated)" 
+                                           onchange="updateResultTags(${index}, this.value)"
+                                           class="mt-1 text-sm px-2 py-1 border border-gray-300 rounded w-full">
+                                </div>
+                            ` : ''}
+                        </div>
+                        ${result.success ? `
+                            <button onclick="saveOne(${index})" class="text-green-600 hover:text-green-700 text-sm">
+                                Save
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+            
+            if (successful > 0) {
+                document.getElementById('saveAllContainer').classList.remove('hidden');
+            }
+        }
+
+        function getPlatformEmoji(platform) {
+            switch (platform) {
+                case 'tiktok': return '🎵';
+                case 'instagram': return '📸';
+                case 'youtube': return '▶️';
+                default: return '🔗';
+            }
+        }
+
+        function updateResultCategory(index, value) {
+            currentResults[index].selectedCategory = value;
+        }
+
+        function updateResultTags(index, value) {
+            currentResults[index].selectedTags = value.split(',').map(t => t.trim()).filter(t => t);
+        }
+
+        async function saveOne(index) {
+            const result = currentResults[index];
+            if (!result.success) return;
+            
+            const category = result.selectedCategory || document.getElementById('bulkCategory').value;
+            if (!category) {
+                alert('Please select a category');
+                return;
+            }
+            
+            try {
+                const { error } = await supabaseClient.from('videos').insert({
+                    platform: result.platform,
+                    video_id: result.videoId,
+                    creator: result.creator,
+                    creator_url: result.creatorUrl,
+                    title: result.title,
+                    description: result.description,
+                    thumbnail: result.thumbnail,
+                    original_url: result.originalUrl,
+                    resolved_url: result.resolvedUrl,
+                    deep_link: result.deepLink,
+                    category: category,
+                    tags: result.selectedTags || [],
+                    source: 'manual'
+                });
+                
+                if (error) throw error;
+                
+                // Mark as saved
+                currentResults[index].saved = true;
+                alert('Saved!');
+                
+            } catch (err) {
+                console.error('Save error:', err);
+                alert('Error saving: ' + err.message);
+            }
+        }
+
+        async function saveAll() {
+            const category = document.getElementById('bulkCategory').value;
+            if (!category) {
+                alert('Please select a category for all videos');
+                return;
+            }
+            
+            const toSave = currentResults.filter(r => r.success && !r.saved);
+            if (toSave.length === 0) {
+                alert('No videos to save');
+                return;
+            }
+            
+            try {
+                const records = toSave.map(r => ({
+                    platform: r.platform,
+                    video_id: r.videoId,
+                    creator: r.creator,
+                    creator_url: r.creatorUrl,
+                    title: r.title,
+                    description: r.description,
+                    thumbnail: r.thumbnail,
+                    original_url: r.originalUrl,
+                    resolved_url: r.resolvedUrl,
+                    deep_link: r.deepLink,
+                    category: r.selectedCategory || category,
+                    tags: r.selectedTags || [],
+                    source: 'manual'
+                }));
+                
+                const { error } = await supabaseClient.from('videos').insert(records);
+                
+                if (error) throw error;
+                
+                alert(`Saved ${records.length} videos!`);
+                clearInput();
+                
+            } catch (err) {
+                console.error('Save all error:', err);
+                alert('Error saving: ' + err.message);
+            }
+        }
+
+        function clearInput() {
+            document.getElementById('urlInput').value = '';
+            document.getElementById('results').innerHTML = '<p class="text-gray-500 text-center py-8">Paste URLs and click "Fetch Metadata" to see results here</p>';
+            document.getElementById('resultCount').textContent = '';
+            document.getElementById('saveAllContainer').classList.add('hidden');
+            currentResults = [];
+        }
+
+        // ============================================
+        // DISCOVERY
+        // ============================================
+
+        function discoverContent() {
+            const topic = document.getElementById('discoverTopic').value.trim();
+            if (!topic) return;
+            
+            const platform = document.getElementById('discoverPlatform').value;
+            
+            // Open search in new tabs
+            if (platform === 'all' || platform === 'tiktok') {
+                window.open(`https://www.tiktok.com/search?q=${encodeURIComponent(topic)}`, '_blank');
+            }
+            if (platform === 'all' || platform === 'youtube') {
+                window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(topic)}`, '_blank');
+            }
+            if (platform === 'all' || platform === 'instagram') {
+                window.open(`https://www.instagram.com/explore/tags/${encodeURIComponent(topic.replace(/\s+/g, ''))}/`, '_blank');
+            }
+            
+            // Show tips
+            document.getElementById('discoveryResults').innerHTML = `
+                <h3 class="font-semibold mb-4">Discovery Tips for "${topic}"</h3>
+                <div class="space-y-3 text-sm text-gray-600">
+                    <p>✅ Opened search results in new tabs</p>
+                    <p>🎯 <strong>What to look for:</strong></p>
+                    <ul class="list-disc list-inside ml-4 space-y-1">
+                        <li>Creators with consistent, quality content</li>
+                        <li>Educational or constructive tone</li>
+                        <li>High engagement but not rage-bait</li>
+                        <li>Professional or semi-professional production</li>
+                    </ul>
+                    <p>📋 <strong>Next steps:</strong></p>
+                    <ol class="list-decimal list-inside ml-4 space-y-1">
+                        <li>Browse the search results</li>
+                        <li>Copy URLs of good videos/profiles</li>
+                        <li>Come back here and paste them in the Curate tab</li>
+                    </ol>
+                </div>
+            `;
+        }
+
+        function openRedditSearch() {
+            const topic = document.getElementById('discoverTopic').value.trim() || 'educational';
+            window.open(`https://www.reddit.com/search/?q=best+${encodeURIComponent(topic)}+tiktok+OR+youtube+accounts`, '_blank');
+        }
+
+        function openPlatformSearch(platform) {
+            const topic = document.getElementById('discoverTopic').value.trim() || '';
+            switch (platform) {
+                case 'tiktok':
+                    window.open(`https://www.tiktok.com/search?q=${encodeURIComponent(topic)}`, '_blank');
+                    break;
+                case 'instagram':
+                    window.open(`https://www.instagram.com/explore/`, '_blank');
+                    break;
+                case 'youtube':
+                    window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(topic)}`, '_blank');
+                    break;
+            }
+        }
+
+        function showImportModal() {
+            document.getElementById('importModal').classList.remove('hidden');
+        }
+
+        function closeImportModal() {
+            document.getElementById('importModal').classList.add('hidden');
+        }
+
+        function importHandles() {
+            const platform = document.getElementById('importPlatform').value;
+            const handles = document.getElementById('importHandles').value
+                .split('\n')
+                .map(h => h.trim().replace(/^@/, ''))
+                .filter(h => h);
+            
+            if (handles.length === 0) {
+                alert('No handles entered');
+                return;
+            }
+            
+            let urls = [];
+            switch (platform) {
+                case 'tiktok':
+                    urls = handles.map(h => `https://www.tiktok.com/@${h}`);
+                    break;
+                case 'instagram':
+                    urls = handles.map(h => `https://www.instagram.com/${h}/`);
+                    break;
+                case 'youtube':
+                    urls = handles.map(h => `https://www.youtube.com/@${h}`);
+                    break;
+            }
+            
+            // Put URLs in the curate input
+            document.getElementById('urlInput').value = urls.join('\n');
+            closeImportModal();
+            showTab('curate');
+        }
+
+        // ============================================
+        // LIBRARY
+        // ============================================
+
+        async function loadLibrary() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('videos')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(100);
+                
+                if (error) throw error;
+                
+                libraryData = data || [];
+                renderLibrary();
+                renderLibraryStats();
+                
+            } catch (err) {
+                console.error('Load library error:', err);
+                document.getElementById('libraryGrid').innerHTML = 
+                    `<p class="text-red-500 text-center py-8 col-span-full">Error loading library: ${err.message}</p>`;
+            }
+        }
+
+        function filterLibrary() {
+            renderLibrary();
+        }
+
+        function renderLibrary() {
+            const search = document.getElementById('librarySearch').value.toLowerCase();
+            const platform = document.getElementById('libraryPlatform').value;
+            const category = document.getElementById('libraryCategory').value;
+            
+            let filtered = libraryData;
+            
+            if (search) {
+                filtered = filtered.filter(v => 
+                    v.creator?.toLowerCase().includes(search) ||
+                    v.title?.toLowerCase().includes(search) ||
+                    v.tags?.some(t => t.toLowerCase().includes(search))
+                );
+            }
+            
+            if (platform) {
+                filtered = filtered.filter(v => v.platform === platform);
+            }
+            
+            if (category) {
+                filtered = filtered.filter(v => v.category === category);
+            }
+            
+            const container = document.getElementById('libraryGrid');
+            
+            if (filtered.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-8 col-span-full">No videos found</p>';
+                return;
+            }
+            
+            container.innerHTML = filtered.map(video => `
+                <div class="video-card bg-white rounded-lg shadow overflow-hidden">
+                    ${video.thumbnail ? `
+                        <img src="${video.thumbnail}" alt="" class="w-full h-32 object-cover">
+                    ` : `
+                        <div class="w-full h-32 bg-gray-200 flex items-center justify-center text-4xl">
+                            ${getPlatformEmoji(video.platform)}
+                        </div>
+                    `}
+                    <div class="p-4">
+                        <div class="flex items-center space-x-2 mb-2">
+                            <span class="px-2 py-0.5 text-xs font-medium text-white rounded platform-${video.platform}">
+                                ${video.platform}
+                            </span>
+                            <span class="text-xs text-gray-500">${video.category}</span>
+                        </div>
+                        <p class="font-medium text-gray-900 truncate">${video.creator}</p>
+                        <p class="text-sm text-gray-600 truncate">${video.title || 'No title'}</p>
+                        ${video.tags?.length ? `
+                            <div class="mt-2 flex flex-wrap gap-1">
+                                ${video.tags.slice(0, 3).map(t => `
+                                    <span class="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">${t}</span>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                        <div class="mt-3 flex items-center justify-between">
+                            <a href="${video.deep_link}" target="_blank" 
+                               class="text-green-600 hover:text-green-700 text-sm">
+                                Open →
+                            </a>
+                            <button onclick="deleteVideo('${video.id}')" 
+                                    class="text-red-400 hover:text-red-600 text-sm">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderLibraryStats() {
+            const stats = {
+                total: libraryData.length,
+                tiktok: libraryData.filter(v => v.platform === 'tiktok').length,
+                instagram: libraryData.filter(v => v.platform === 'instagram').length,
+                youtube: libraryData.filter(v => v.platform === 'youtube').length
+            };
+            
+            document.getElementById('libraryStats').innerHTML = `
+                <div class="bg-white rounded-lg shadow p-4">
+                    <p class="text-sm text-gray-500">Total Videos</p>
+                    <p class="text-2xl font-bold">${stats.total}</p>
+                </div>
+                <div class="bg-black text-white rounded-lg shadow p-4">
+                    <p class="text-sm text-gray-300">TikTok</p>
+                    <p class="text-2xl font-bold">${stats.tiktok}</p>
+                </div>
+                <div class="bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg shadow p-4">
+                    <p class="text-sm text-pink-100">Instagram</p>
+                    <p class="text-2xl font-bold">${stats.instagram}</p>
+                </div>
+                <div class="bg-red-600 text-white rounded-lg shadow p-4">
+                    <p class="text-sm text-red-200">YouTube</p>
+                    <p class="text-2xl font-bold">${stats.youtube}</p>
+                </div>
+            `;
+        }
+
+        async function deleteVideo(id) {
+            if (!confirm('Delete this video from your library?')) return;
+            
+            try {
+                const { error } = await supabaseClient
+                    .from('videos')
+                    .delete()
+                    .eq('id', id);
+                
+                if (error) throw error;
+                
+                libraryData = libraryData.filter(v => v.id !== id);
+                renderLibrary();
+                renderLibraryStats();
+                
+            } catch (err) {
+                console.error('Delete error:', err);
+                alert('Error deleting: ' + err.message);
+            }
+        }
+
+        // ============================================
+        // SUBMISSIONS
+        // ============================================
+
+        async function loadSubmissions() {
+            try {
+                const { data, error } = await supabaseClient
+                    .from('submissions')
+                    .select('*')
+                    .eq('status', 'pending')
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                
+                renderSubmissions(data || []);
+                
+            } catch (err) {
+                console.error('Load submissions error:', err);
+            }
+        }
+
+        function renderSubmissions(submissions) {
+            const container = document.getElementById('submissionsList');
+            
+            if (submissions.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-center py-8">No pending submissions</p>';
+                return;
+            }
+            
+            container.innerHTML = submissions.map(sub => `
+                <div class="border rounded-lg p-4 bg-white">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <p class="font-medium">${sub.url}</p>
+                            <p class="text-sm text-gray-500">
+                                Suggested: ${sub.suggested_category || 'None'} · 
+                                ${sub.suggested_tags?.join(', ') || 'No tags'}
+                            </p>
+                            ${sub.submission_note ? `<p class="text-sm text-gray-600 mt-1">"${sub.submission_note}"</p>` : ''}
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="approveSubmission('${sub.id}', '${sub.url}')" 
+                                    class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
+                                Approve
+                            </button>
+                            <button onclick="rejectSubmission('${sub.id}')" 
+                                    class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">
+                                Reject
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function approveSubmission(id, url) {
+            // Add URL to curate input and switch to that tab
+            document.getElementById('urlInput').value = url;
+            showTab('curate');
+            
+            // Mark as approved (you'd also want to link to the created video)
+            await supabaseClient
+                .from('submissions')
+                .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+                .eq('id', id);
+        }
+
+        async function rejectSubmission(id) {
+            if (!confirm('Reject this submission?')) return;
+            
+            await supabaseClient
+                .from('submissions')
+                .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
+                .eq('id', id);
+            
+            loadSubmissions();
+        }
+
+        // ============================================
+        // INIT
+        // ============================================
+
+        document.addEventListener('DOMContentLoaded', loadConfig);
+    </script>
+</body>
+</html>
